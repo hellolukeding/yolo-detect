@@ -1,0 +1,57 @@
+# -----------------------------
+# Python / Poetry
+# -----------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.env
+.venv/
+venv/
+.poetry/
+poetry.lock
+
+# Jupyter / logs
+.ipynb_checkpoints/
+logs/
+*.log
+
+# -----------------------------
+# YOLO / Ultralytics
+# -----------------------------
+runs/
+*.pt
+*.onnx
+*.engine
+*.tflite
+*.torchscript
+*.mlmodel
+
+# Cached datasets and annotations
+datasets/
+!datasets/README.md  # 保留说明文件
+data/
+!data/README.md
+
+# -----------------------------
+# IDE / OS Specific
+# -----------------------------
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# -----------------------------
+# Temporary / Export / Build
+# -----------------------------
+*.zip
+*.tar
+*.gz
+*.bak
+*.tmp
+__results__/
+output/
+dist/
+build/
