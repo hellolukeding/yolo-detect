@@ -1,0 +1,33 @@
+# YOLO Person Detection Dataset Configuration
+# 标准 YOLO 数据集格式配置
+
+# 数据集根目录
+path: /Users/lukeding/Desktop/playground/2025/yolo-detect/datasets/yolo_person_train
+
+# 训练集和验证集（相对于 path 的路径）
+train: anno/train.txt  # 训练集图片列表
+val: anno/val.txt      # 验证集图片列表
+
+# 类别数量
+nc: 1
+
+# 类别名称
+names:
+  0: person
+
+# 数据集信息
+# - 总样本数: 32,128 张图片
+#   - 训练集: 25,703 张 (80%)
+#   - 验证集: 6,425 张 (20%)
+# - 任务类型: 目标检测 (Object Detection)
+# - 标注格式: YOLO format (class x_center y_center width height)
+# - 图片格式: JPEG
+# - 创建日期: 2021-02-17
+# - 检测类别: 人体检测 (Person Detection)
+# - 配置更新: 2025-10-16
+
+# 数据集已准备完成:
+# ✓ 路径格式已修正为 anno/images/xxx.jpg
+# ✓ 已划分训练集和验证集
+# ✓ 标签文件位于 anno/labels/ 目录，与图片一一对应
+# ✓ 原始文件已备份为 train.txt.backup
