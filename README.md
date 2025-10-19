@@ -3,6 +3,7 @@
 ## 🎯 项目概述
 
 这是一个完整的 YOLO (You Only Look Once) 目标检测项目，支持：
+
 - ✅ 图像/视频检测
 - ✅ 模型训练（支持 Mac GPU 加速）
 - ✅ 批量检测
@@ -89,6 +90,32 @@ poetry run python scripts/detect_video.py
 - 摄像头实时检测
 - YouTube 视频检测
 - 目标跟踪
+
+### 3.5 网络摄像头实时检测 (webcam_detect.py) 🆕
+
+使用训练好的模型进行网络摄像头实时检测。
+
+```bash
+# 使用训练好的模型
+poetry run python scripts/webcam_detect.py
+
+# 使用命令行参数
+poetry run python scripts/webcam_detect.py --model runs/train/person_detection/weights/best.pt --conf 0.5
+
+# 启用目标跟踪
+poetry run python scripts/webcam_detect.py --track
+
+# 保存检测视频
+poetry run python scripts/webcam_detect.py --save
+```
+
+功能：
+
+- ✅ 使用训练完成的模型进行实时检测
+- ✅ 支持目标跟踪功能
+- ✅ 可调节置信度阈值
+- ✅ 支持 Mac GPU (MPS) 加速
+- ✅ 按 'q' 键退出检测
 
 ### 4. 批量检测 (batch_detect.py)
 
@@ -218,13 +245,13 @@ results = model('image.jpg', device='cpu')
 
 ## 📊 YOLO 模型选择
 
-| 模型       | 大小  | 速度         | 精度                     | 适用场景           |
-| ---------- | ----- | ------------ | ------------------------ | ------------------ |
-| yolo11n.pt | 2.6MB | ⚡️⚡️⚡️ | ⭐️⭐️⭐️             | 实时应用、移动设备 |
-| yolo11s.pt | 9.4MB | ⚡️⚡️     | ⭐️⭐️⭐️⭐️         | 平衡性能和速度     |
-| yolo11m.pt | 20MB  | ⚡️         | ⭐️⭐️⭐️⭐️⭐️     | 高精度应用         |
-| yolo11l.pt | 25MB  | 🐌           | ⭐️⭐️⭐️⭐️⭐️     | 服务器端部署       |
-| yolo11x.pt | 57MB  | 🐌🐌         | ⭐️⭐️⭐️⭐️⭐️⭐️ | 最高精度要求       |
+| 模型       | 大小  | 速度      | 精度               | 适用场景           |
+| ---------- | ----- | --------- | ------------------ | ------------------ |
+| yolo11n.pt | 2.6MB | ⚡️⚡️⚡️ | ⭐️⭐️⭐️          | 实时应用、移动设备 |
+| yolo11s.pt | 9.4MB | ⚡️⚡️    | ⭐️⭐️⭐️⭐️       | 平衡性能和速度     |
+| yolo11m.pt | 20MB  | ⚡️       | ⭐️⭐️⭐️⭐️⭐️    | 高精度应用         |
+| yolo11l.pt | 25MB  | 🐌        | ⭐️⭐️⭐️⭐️⭐️    | 服务器端部署       |
+| yolo11x.pt | 57MB  | 🐌🐌      | ⭐️⭐️⭐️⭐️⭐️⭐️ | 最高精度要求       |
 
 更换模型只需修改模型名称：
 
@@ -326,8 +353,6 @@ poetry run yolo predict model=yolo11n.pt source=0 show=True
 4. **专家**: 学习 `train_model.py` 训练自定义模型
 
 开始你的 YOLO 之旅吧！🚀
-
-
 
 # 使用 Apple Silicon GPU (MPS) 训练 YOLO 模型
 
