@@ -6,7 +6,7 @@ authors = [
     {name = "lukeding",email = "dingkai9627@outlook.com"}
 ]
 readme = "README.md"
-requires-python = ">=3.12,<3.14"
+python = ">=3.11"
 dependencies = [
     "ultralytics (>=8.3.214,<9.0.0)",
     "torch (>=2.8.0,<3.0.0)",
@@ -32,6 +32,10 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 package-mode = false
+
+[tool.poetry.dependencies]
+python = ">=3.11,<3.14"
+
 [tool.poetry.group.dev.dependencies]
 black = "^25.9.0"
 isort = "^7.0.0"
