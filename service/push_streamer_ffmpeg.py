@@ -76,7 +76,11 @@ class FFmpegPushStreamer:
         try:
             logger.info(f"正在加载模型: {self.model_path}")
             self.model = YOLO(self.model_path)
-            logger.success(f"模型加载成功!")
+
+            # 强制使用 CPU，避免 CUDA 错误
+            self.model.to('cpu')
+
+            logger.success(f"模型加载成功! (使用 CPU)")
             logger.info(f"模型类别: {self.model.names}")
             return True
         except Exception as e:
@@ -172,7 +176,7 @@ class FFmpegPushStreamer:
             # 等待一小段时间，检查 FFmpeg 是否正常启动
             import time
             time.sleep(0.5)
-            
+
             if self.ffmpeg_process.poll() is not None:
                 # FFmpeg 进程已经退出，读取错误信息
                 stderr_output = self.ffmpeg_process.stderr.read().decode('utf-8', errors='ignore')
@@ -294,10 +298,11 @@ class FFmpegPushStreamer:
                     logger.warning("无法读取摄像头帧")
                     break
 
-                # YOLO 检测
+                # YOLO 检测（使用 CPU）
                 results = self.model.predict(
                     frame,
                     conf=0.5,
+                    device='cpu',  # 强制使用 CPU
                     verbose=False
                 )
 
