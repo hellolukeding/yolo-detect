@@ -30,7 +30,8 @@ class PushStreamer:
         video_width: int = 640,
         video_height: int = 480,
         fps: int = 30,
-        bitrate: int = 500
+        bitrate: int = 500,
+        headless: bool = False  # 无头模式，适用于无显示器的设备
     ):
         """
         初始化推流器
@@ -43,6 +44,7 @@ class PushStreamer:
             video_height: 视频高度
             fps: 帧率
             bitrate: 比特率(kbps)
+            headless: 是否启用无头模式（无显示器环境）
         """
         self.model_path = model_path
         self.host = host
@@ -51,6 +53,7 @@ class PushStreamer:
         self.video_height = video_height
         self.fps = fps
         self.bitrate = bitrate
+        self.headless = headless  # 无头模式标志
 
         self.model: Optional[YOLO] = None
         self.cap: Optional[cv2.VideoCapture] = None
@@ -59,6 +62,13 @@ class PushStreamer:
         self.use_gstreamer: bool = True  # 是否使用GStreamer推流
 
         self._setup_gstreamer()
+
+        if self.headless:
+            logger.info("🤖 无头模式已启用 - 适用于无显示器环境")
+            # 在无头模式下，禁用所有GUI相关功能
+            import os
+            os.environ['OPENCV_VIDEOIO_PRIORITY_MSMF'] = '0'  # Windows
+            os.environ['QT_QPA_PLATFORM'] = 'offscreen'  # Linux
 
     def _setup_gstreamer(self) -> None:
         """配置GStreamer推流参数"""
@@ -301,8 +311,10 @@ class PushStreamer:
             self.out.release()
             logger.info("推流已停止")
 
-        cv2.destroyAllWindows()
-        logger.info("所有窗口已关闭")
+        # 只在非无头模式下销毁窗口
+        if not self.headless:
+            cv2.destroyAllWindows()
+            logger.info("所有窗口已关闭")
 
     def gstreamer_setup(self) -> None:
         """配置GStreamer推流参数（向后兼容的方法）"""
@@ -348,7 +360,11 @@ class PushStreamer:
             logger.warning("⚠️  GStreamer 不可用，仅显示检测预览")
             logger.info("如需推流功能，请安装支持 GStreamer 的 OpenCV")
         logger.info(f"跟踪模式: {'开启' if enable_tracking else '关闭'}")
-        logger.info("按 'q' 键退出")
+        logger.info(
+            f"运行模式: {'无头模式 (Headless)' if self.headless else '图形界面模式'}")
+        logger.info(
+            f"预览窗口: {'禁用' if self.headless else ('显示' if show_preview else '隐藏')}")
+        logger.info("按 Ctrl+C 退出")
         logger.info("-" * 50)
 
         frame_count = 0
@@ -416,12 +432,16 @@ class PushStreamer:
                 if self.use_gstreamer and self.out is not None:
                     self.out.write(frame)
 
-                # 显示预览
-                window_title = '推流预览 - 按q退出' if self.use_gstreamer else '检测预览 - 按q退出 (无推流)'
-                cv2.imshow(window_title, frame)
-                if cv2.waitKey(1) & 0xFF == ord('q'):
-                    logger.info("用户退出")
-                    break
+                # 显示预览（仅在非无头模式且需要预览时）
+                if not self.headless and show_preview:
+                    window_title = '推流预览 - 按q退出' if self.use_gstreamer else '检测预览 - 按q退出 (无推流)'
+                    cv2.imshow(window_title, frame)
+                    if cv2.waitKey(1) & 0xFF == ord('q'):
+                        logger.info("用户退出")
+                        break
+                elif not self.headless:
+                    # 即使不显示窗口，也需要处理事件循环（避免卡死）
+                    cv2.waitKey(1)
 
                 # 显示状态
                 if frame_count % 30 == 0:

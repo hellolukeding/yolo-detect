@@ -1,0 +1,37 @@
+# Systemd 服务配置文件
+# 用于在 Linux 系统上设置开机自启动推流服务
+
+[Unit]
+Description=YOLO Headless Streaming Service
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/yolo-detect
+ExecStart=/usr/bin/python3 /home/pi/yolo-detect/scripts/headless_streaming.py \
+    --model /home/pi/yolo-detect/runs/train/person_detection/weights/best.pt \
+    --host 192.168.1.100 \
+    --port 5004 \
+    --camera 0 \
+    --width 640 \
+    --height 480 \
+    --fps 30 \
+    --bitrate 500 \
+    --conf 0.25 \
+    --device cpu
+
+# 重启策略
+Restart=on-failure
+RestartSec=10
+
+# 日志配置
+StandardOutput=journal
+StandardError=journal
+
+# 环境变量
+Environment="PYTHONUNBUFFERED=1"
+Environment="OPENCV_VIDEOIO_PRIORITY_MSMF=0"
+
+[Install]
+WantedBy=multi-user.target

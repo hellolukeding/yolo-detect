@@ -21,8 +21,8 @@ logs/
 # -----------------------------
 # YOLO / Ultralytics
 # -----------------------------
-runs/
-*.pt
+
+models/
 *.onnx
 *.engine
 *.tflite
