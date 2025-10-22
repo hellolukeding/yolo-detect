@@ -1,11 +1,10 @@
-
-
 import os
 import sys
 
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+# 添加项目根目录到 Python 路径（必须在导入 service 之前）
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from service.push_streamer import PushStreamer
+from service.push_streamer import PushStreamer  # noqa: E402
 
 
 def main():
@@ -18,15 +17,17 @@ def main():
     ╚═══════════════════════════════════════════════════════╝
     """)
 
+    # 使用 GStreamer UDP RTP H.264 推流到远程服务器
+    # 参数基于工作的推流命令配置
     streamer = PushStreamer(
         model_path="runs/train/person_detection/weights/best.pt",
-        host="115.120.237.79",
-        port=5004,
-        video_width=640,
+        host="115.120.237.79",      # 推流目标服务器
+        port=5004,                  # UDP 端口
+        video_width=640,            # 视频分辨率
         video_height=480,
-        fps=30,
-        bitrate=500,
-        headless=True  # 启用无头模式
+        fps=30,                     # 帧率
+        bitrate=2000,               # 比特率 2Mbps (提高质量)
+        headless=True               # 无头模式（无显示器环境）
     )
 
     # 开始推流检测

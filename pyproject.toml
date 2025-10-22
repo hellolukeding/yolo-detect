@@ -11,6 +11,10 @@ dependencies = [
     "ultralytics (>=8.3.214,<9.0.0)",
     "torch (>=2.8.0,<3.0.0)",
     "torchvision (>=0.23.0,<0.24.0)",
+    # 注意：标准的 opencv-python 不包含 GStreamer 支持
+    # 在需要推流功能的硬件设备上，请使用以下命令替换：
+    # pip uninstall opencv-python
+    # pip install opencv-contrib-python 或从源码编译
     "opencv-python (>=4.12.0.88,<5.0.0.0)",
     "tqdm (>=4.67.1,<5.0.0)",
     "matplotlib (>=3.10.7,<4.0.0)",
@@ -46,3 +50,23 @@ flake8 = "^7.3.0"
 name = "tuna"
 url = "https://pypi.tuna.tsinghua.edu.cn/simple"
 priority = "primary"
+
+[tool.black]
+line-length = 120
+target-version = ['py311']
+extend-exclude = '''
+/(
+  # 不格式化这些文件
+  \.git
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 120
+skip_gitignore = true
+# 跳过测试文件中需要特殊导入顺序的文件
+skip = ["test/test_push.py", "test/test_push_ffmpeg.py"]

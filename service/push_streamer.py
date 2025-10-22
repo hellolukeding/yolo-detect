@@ -26,25 +26,29 @@ class PushStreamer:
         self,
         model_path: str = "runs/train/person_detection/weights/best.pt",
         host: str = "115.120.237.79",
-        port: int = 5004,
+        port: int = 5004,  # 默认使用 UDP 推流端口
         video_width: int = 640,
         video_height: int = 480,
         fps: int = 30,
-        bitrate: int = 500,
-        headless: bool = False  # 无头模式，适用于无显示器的设备
+        bitrate: int = 2000,  # 提高默认比特率到 2Mbps
+        headless: bool = False,  # 无头模式，适用于无显示器的设备
     ):
         """
-        初始化推流器
+        初始化推流器 - 使用 GStreamer UDP RTP 推流
 
         Args:
             model_path: YOLO模型路径
-            host: 推流目标主机地址
-            port: 推流目标端口
+            host: 推流目标主机地址（默认: 115.120.237.79）
+            port: 推流目标端口（默认: 5004）
             video_width: 视频宽度
             video_height: 视频高度
             fps: 帧率
-            bitrate: 比特率(kbps)
+            bitrate: 比特率(kbps)，默认 2000
             headless: 是否启用无头模式（无显示器环境）
+
+        推流方式:
+            使用 GStreamer UDP RTP H.264 推流到远程服务器
+            管道: appsrc -> videoconvert -> x264enc -> rtph264pay -> udpsink
         """
         self.model_path = model_path
         self.host = host
@@ -53,14 +57,15 @@ class PushStreamer:
         self.video_height = video_height
         self.fps = fps
         self.bitrate = bitrate
-        self.headless = headless  # 无头模式标志
+        self.headless = headless
 
         self.model: Optional[YOLO] = None
         self.cap: Optional[cv2.VideoCapture] = None
         self.out: Optional[cv2.VideoWriter] = None
         self.gst_pipeline: Optional[str] = None
-        self.use_gstreamer: bool = True  # 是否使用GStreamer推流
+        self.use_gstreamer = True
 
+        # 设置 GStreamer 推流
         self._setup_gstreamer()
 
         if self.headless:
@@ -71,55 +76,67 @@ class PushStreamer:
             os.environ['QT_QPA_PLATFORM'] = 'offscreen'  # Linux
 
     def _setup_gstreamer(self) -> None:
-        """配置GStreamer推流参数，支持多种编码器"""
+        """配置 GStreamer UDP RTP H.264 推流参数
+
+        基于您的工作管道配置:
+        gst-launch-1.0 ... rtph264pay config-interval=1 pt=96 ! udpsink host=115.120.237.79 port=5004
+        """
         # 定义多个备选管道（按优先级排序）
         self.gst_pipelines = [
-            # 管道 1: x264enc (最好的质量，需要 gstreamer1.0-plugins-ugly)
+            # 管道 1: x264enc (最佳质量，与您的工作命令兼容)
             (
                 f"appsrc ! videoconvert ! "
                 f"video/x-raw,format=I420,width={self.video_width},height={self.video_height},framerate={self.fps}/1 ! "
-                f"x264enc bitrate={self.bitrate} tune=zerolatency speed-preset=ultrafast ! "
+                f"x264enc tune=zerolatency speed-preset=ultrafast bitrate={self.bitrate} key-int-max={self.fps * 2} ! "
+                f"h264parse ! "
                 f"rtph264pay config-interval=1 pt=96 ! "
                 f"udpsink host={self.host} port={self.port}",
-                "x264enc"
+                "x264enc (推荐)"
             ),
-            # 管道 2: openh264enc (开源 H264 编码器，质量较好)
+            # 管道 2: x264enc 简化版
+            (
+                f"appsrc ! videoconvert ! "
+                f"x264enc tune=zerolatency speed-preset=ultrafast bitrate={self.bitrate} ! "
+                f"rtph264pay config-interval=1 pt=96 ! "
+                f"udpsink host={self.host} port={self.port}",
+                "x264enc (简化)"
+            ),
+            # 管道 3: openh264enc
             (
                 f"appsrc ! videoconvert ! "
                 f"openh264enc bitrate={self.bitrate * 1000} ! "
+                f"h264parse ! "
                 f"rtph264pay config-interval=1 pt=96 ! "
                 f"udpsink host={self.host} port={self.port}",
                 "openh264enc"
             ),
-            # 管道 3: avenc_h264 (FFmpeg H264 编码器)
+            # 管道 4: avenc_h264 (FFmpeg)
             (
                 f"appsrc ! videoconvert ! "
                 f"avenc_h264 bitrate={self.bitrate * 1000} ! "
+                f"h264parse ! "
                 f"rtph264pay config-interval=1 pt=96 ! "
                 f"udpsink host={self.host} port={self.port}",
                 "avenc_h264"
             ),
-            # 管道 4: omxh264enc (硬件编码，适用于树莓派)
+            # 管道 5: omxh264enc (树莓派硬件编码)
             (
                 f"appsrc ! videoconvert ! "
                 f"omxh264enc ! "
+                f"h264parse ! "
                 f"rtph264pay config-interval=1 pt=96 ! "
                 f"udpsink host={self.host} port={self.port}",
                 "omxh264enc"
-            ),
-            # 管道 5: jpegenc (MJPEG，最兼容但质量较低)
-            (
-                f"appsrc ! videoconvert ! "
-                f"jpegenc ! "
-                f"rtpjpegpay ! "
-                f"udpsink host={self.host} port={self.port}",
-                "jpegenc"
             ),
         ]
 
         # 默认使用第一个管道
         self.gst_pipeline = self.gst_pipelines[0][0]
-        logger.info(f"GStreamer管道配置完成: {self.host}:{self.port}")
+        logger.info(f"GStreamer UDP RTP 推流配置完成")
+        logger.info(f"  目标: {self.host}:{self.port}")
+        logger.info(f"  编码: H.264, 比特率: {self.bitrate}kbps")
+        logger.info(
+            f"  分辨率: {self.video_width}x{self.video_height}@{self.fps}fps")
 
     def _load_model(self, device: str = "mps") -> bool:
         """

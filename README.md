@@ -117,6 +117,37 @@ poetry run python scripts/webcam_detect.py --save
 - ✅ 支持 Mac GPU (MPS) 加速
 - ✅ 按 'q' 键退出检测
 
+### 3.6 FFmpeg 推流检测 (test_push_ffmpeg.py) 🆕✨
+
+使用 FFmpeg 进行实时检测推流到远程服务器（推荐方案）。
+
+```bash
+# 快速部署（仅需 FFmpeg，不需要 GStreamer）
+bash scripts/deploy_ffmpeg.sh
+
+# 运行推流
+poetry run python test/test_push_ffmpeg.py
+```
+
+功能：
+
+- ✅ 实时 YOLO 检测 + 远程推流
+- ✅ 使用 FFmpeg（安装简单，无需 GStreamer）
+- ✅ 支持 RTP/UDP 推流到 Janus 等服务器
+- ✅ 自动适配摄像头设备
+- ✅ 低延迟、高性能
+
+**对比 GStreamer 方案：**
+
+- 安装时间：1 分钟 vs 1 小时
+- 配置难度：简单 vs 复杂
+- 推荐指数：⭐⭐⭐⭐⭐
+
+查看详细文档：
+
+- `FFMPEG_STREAMING.md` - FFmpeg 推流完整指南
+- `STREAMING_COMPARISON.md` - FFmpeg vs GStreamer 对比
+
 ### 4. 批量检测 (batch_detect.py)
 
 批量处理多张图像。

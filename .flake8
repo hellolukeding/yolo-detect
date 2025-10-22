@@ -1,0 +1,15 @@
+[flake8]
+max-line-length = 120
+exclude = 
+    .git,
+    __pycache__,
+    .venv,
+    venv,
+    build,
+    dist,
+    *.egg-info
+# E402: module level import not at top of file
+# 允许在 sys.path 修改后导入模块
+per-file-ignores =
+    test/*.py:E402
+    scripts/*.py:E402
