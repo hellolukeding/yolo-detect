@@ -501,4 +501,282 @@ A: 修改 `start_training.py` 中的 `resume=True`
 
 ---
 
-**提示**：首次训练建议先运行 `test_mps_training.py` 验证环境配置正确，
+**提示**：首次训练建议先运行 `test_mps_training.py` 验证环境配置正确。
+
+## 🎥 硬件设备部署指南（GStreamer 推流）
+
+### 系统要求
+
+- ✅ Ubuntu 18.04 或更高版本（树莓派、Jetson Nano 等）
+- ✅ Python 3.11+
+- ✅ GStreamer 1.0+
+- ✅ 摄像头设备
+
+### 在硬件设备上的完整部署步骤
+
+#### 1. 安装系统依赖
+
+```bash
+# 更新系统包列表
+sudo apt-get update
+
+# 安装 GStreamer 核心组件和插件
+sudo apt-get install -y \
+    gstreamer1.0-tools \
+    gstreamer1.0-plugins-base \
+    gstreamer1.0-plugins-good \
+    gstreamer1.0-plugins-bad \
+    gstreamer1.0-plugins-ugly \
+    gstreamer1.0-libav \
+    libgstreamer1.0-dev \
+    libgstreamer-plugins-base1.0-dev
+
+# 安装其他必要的库
+sudo apt-get install -y \
+    python3-dev \
+    libavcodec-dev \
+    libavformat-dev \
+    libswscale-dev \
+    libv4l-dev \
+    libxvidcore-dev \
+    libx264-dev \
+    libgtk-3-dev \
+    libatlas-base-dev \
+    gfortran
+```
+
+#### 2. 验证 GStreamer 安装
+
+```bash
+# 检查 GStreamer 版本
+gst-launch-1.0 --version
+
+# 测试 GStreamer 是否正常工作
+gst-launch-1.0 videotestsrc ! autovideosink
+```
+
+如果看到测试视频窗口，说明 GStreamer 安装成功。
+
+#### 3. 安装支持 GStreamer 的 OpenCV
+
+卸载标准的 opencv-python 并安装支持 GStreamer 的版本：
+
+```bash
+# 进入项目目录
+cd /path/to/yolo-detect
+
+# 激活 Poetry 虚拟环境
+poetry shell
+
+# 卸载标准的 opencv-python
+pip uninstall opencv-python opencv-python-headless
+
+# 安装支持 GStreamer 的 opencv-python（从源码编译）
+# 注意：这个过程可能需要 30-60 分钟
+pip install opencv-contrib-python
+
+# 或者使用预编译的支持 GStreamer 的版本（推荐）
+pip install opencv-python-headless --no-binary opencv-python-headless
+```
+
+**推荐方法**：使用 `opencv-contrib-python`，它通常包含 GStreamer 支持：
+
+```bash
+pip uninstall opencv-python
+pip install opencv-contrib-python
+```
+
+#### 4. 验证 OpenCV 的 GStreamer 支持
+
+```bash
+# 在 Python 中检查
+poetry run python -c "import cv2; print('GStreamer:', cv2.getBuildInformation().find('GStreamer') > 0)"
+```
+
+如果输出 `GStreamer: True`，说明 OpenCV 支持 GStreamer。
+
+#### 5. 安装项目依赖
+
+```bash
+# 安装 Poetry（如果还没有）
+curl -sSL https://install.python-poetry.org | python3 -
+
+# 安装项目依赖
+poetry install
+
+# 验证所有依赖
+poetry run python -c "import cv2, ultralytics, lap; print('✅ 所有依赖安装成功')"
+```
+
+#### 6. 配置摄像头权限
+
+```bash
+# 将当前用户添加到 video 组
+sudo usermod -a -G video $USER
+
+# 重新登录以使权限生效
+# 或者运行: newgrp video
+```
+
+#### 7. 测试推流功能
+
+```bash
+# 运行推流测试
+poetry run python test/test_push.py
+```
+
+### 常见问题排查
+
+#### 问题 1: GStreamer 推流初始化失败
+
+**错误信息：**
+
+```
+[推流模块] | WARNING | GStreamer 推流初始化失败，将使用替代方案
+```
+
+**解决方案：**
+
+1. 检查 OpenCV 是否支持 GStreamer：
+
+```bash
+poetry run python -c "import cv2; print(cv2.getBuildInformation())" | grep -i gstreamer
+```
+
+2. 如果显示 `NO`，需要重新安装支持 GStreamer 的 OpenCV（参考步骤 3）
+
+3. 验证 GStreamer 管道是否正确：
+
+```bash
+# 测试视频源到 UDP 推流
+gst-launch-1.0 videotestsrc ! videoconvert ! x264enc ! rtph264pay ! udpsink host=127.0.0.1 port=5004
+```
+
+#### 问题 2: 模块 'cv2' 未找到
+
+**错误信息：**
+
+```
+ModuleNotFoundError: No module named 'cv2'
+```
+
+**解决方案：**
+
+```bash
+poetry install
+poetry run pip install opencv-contrib-python
+```
+
+#### 问题 3: 模块 'lap' 未找到
+
+**解决方案：**
+
+```bash
+poetry install
+```
+
+确保 `pyproject.toml` 中包含 `lap>=0.5.12` 依赖。
+
+#### 问题 4: 摄像头无法打开
+
+**解决方案：**
+
+1. 检查摄像头设备：
+
+```bash
+ls -l /dev/video*
+```
+
+2. 测试摄像头：
+
+```bash
+# 使用 GStreamer 测试
+gst-launch-1.0 v4l2src device=/dev/video0 ! videoconvert ! autovideosink
+
+# 使用 OpenCV 测试
+poetry run python -c "import cv2; cap = cv2.VideoCapture(0); print('摄像头:', cap.isOpened())"
+```
+
+3. 检查权限：
+
+```bash
+sudo chmod 666 /dev/video0
+```
+
+### 性能优化建议
+
+#### 1. 调整推流参数
+
+编辑 `test/test_push.py` 或相应脚本：
+
+```python
+streamer = PushStreamer(
+    model_path="runs/train/person_detection/weights/best.pt",
+    host="your-server-ip",
+    port=5004,
+    video_width=640,      # 降低分辨率以提高性能
+    video_height=480,
+    fps=30,               # 调整帧率
+    bitrate=500,          # 调整比特率（kbps）
+    headless=True         # 无头模式（不显示窗口）
+)
+```
+
+#### 2. 使用更小的 YOLO 模型
+
+```python
+# 使用 nano 模型以提高速度
+model_path="models/yolo11n.pt"
+```
+
+#### 3. 降低检测频率
+
+每隔几帧检测一次，而不是每帧都检测。
+
+### 接收推流
+
+在接收端（如服务器或另一台设备）：
+
+```bash
+# 使用 GStreamer 接收 UDP 流
+gst-launch-1.0 -v udpsrc port=5004 ! \
+    application/x-rtp,encoding-name=H264,payload=96 ! \
+    rtph264depay ! h264parse ! avdec_h264 ! \
+    videoconvert ! autovideosink
+
+# 或使用 VLC 播放器
+vlc udp://@:5004
+
+# 或使用 FFmpeg 接收
+ffmpeg -i udp://127.0.0.1:5004 -c copy output.mp4
+```
+
+### 系统服务配置（可选）
+
+如果需要开机自启动推流服务：
+
+```bash
+# 创建 systemd 服务
+sudo cp service/yolo-streaming.service /etc/systemd/system/
+
+# 编辑服务文件，修改路径
+sudo nano /etc/systemd/system/yolo-streaming.service
+
+# 启用服务
+sudo systemctl daemon-reload
+sudo systemctl enable yolo-streaming.service
+sudo systemctl start yolo-streaming.service
+
+# 查看服务状态
+sudo systemctl status yolo-streaming.service
+```
+
+### 参考资源
+
+- **GStreamer 官方文档**: https://gstreamer.freedesktop.org/documentation/
+- **OpenCV + GStreamer**: https://docs.opencv.org/master/d0/da7/videoio_overview.html
+- **YOLO 实时推流**: 查看 `service/push_streamer.py` 源码
+
+---
+
+**提示**：在硬件设备上部署时，建议先在本地测试推流功能，确保所有依赖都正确安装后再部署到生产环境，

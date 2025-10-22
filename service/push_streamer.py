@@ -71,14 +71,54 @@ class PushStreamer:
             os.environ['QT_QPA_PLATFORM'] = 'offscreen'  # Linux
 
     def _setup_gstreamer(self) -> None:
-        """配置GStreamer推流参数"""
-        self.gst_pipeline = (
-            f"appsrc ! videoconvert ! "
-            f"video/x-raw,format=I420,width={self.video_width},height={self.video_height},framerate={self.fps}/1 ! "
-            f"x264enc bitrate={self.bitrate} tune=zerolatency speed-preset=ultrafast ! "
-            f"rtph264pay config-interval=1 pt=96 ! "
-            f"udpsink host={self.host} port={self.port}"
-        )
+        """配置GStreamer推流参数，支持多种编码器"""
+        # 定义多个备选管道（按优先级排序）
+        self.gst_pipelines = [
+            # 管道 1: x264enc (最好的质量，需要 gstreamer1.0-plugins-ugly)
+            (
+                f"appsrc ! videoconvert ! "
+                f"video/x-raw,format=I420,width={self.video_width},height={self.video_height},framerate={self.fps}/1 ! "
+                f"x264enc bitrate={self.bitrate} tune=zerolatency speed-preset=ultrafast ! "
+                f"rtph264pay config-interval=1 pt=96 ! "
+                f"udpsink host={self.host} port={self.port}",
+                "x264enc"
+            ),
+            # 管道 2: openh264enc (开源 H264 编码器，质量较好)
+            (
+                f"appsrc ! videoconvert ! "
+                f"openh264enc bitrate={self.bitrate * 1000} ! "
+                f"rtph264pay config-interval=1 pt=96 ! "
+                f"udpsink host={self.host} port={self.port}",
+                "openh264enc"
+            ),
+            # 管道 3: avenc_h264 (FFmpeg H264 编码器)
+            (
+                f"appsrc ! videoconvert ! "
+                f"avenc_h264 bitrate={self.bitrate * 1000} ! "
+                f"rtph264pay config-interval=1 pt=96 ! "
+                f"udpsink host={self.host} port={self.port}",
+                "avenc_h264"
+            ),
+            # 管道 4: omxh264enc (硬件编码，适用于树莓派)
+            (
+                f"appsrc ! videoconvert ! "
+                f"omxh264enc ! "
+                f"rtph264pay config-interval=1 pt=96 ! "
+                f"udpsink host={self.host} port={self.port}",
+                "omxh264enc"
+            ),
+            # 管道 5: jpegenc (MJPEG，最兼容但质量较低)
+            (
+                f"appsrc ! videoconvert ! "
+                f"jpegenc ! "
+                f"rtpjpegpay ! "
+                f"udpsink host={self.host} port={self.port}",
+                "jpegenc"
+            ),
+        ]
+
+        # 默认使用第一个管道
+        self.gst_pipeline = self.gst_pipelines[0][0]
         logger.info(f"GStreamer管道配置完成: {self.host}:{self.port}")
 
     def _load_model(self, device: str = "mps") -> bool:
@@ -142,12 +182,8 @@ class PushStreamer:
         """
         try:
             # 检查 OpenCV 是否支持 GStreamer
-            import platform
-            import subprocess
-
-            # 尝试检查 GStreamer 支持
             opencv_build_info = cv2.getBuildInformation()
-            has_gstreamer = 'GStreamer' in opencv_build_info and 'YES' in opencv_build_info
+            has_gstreamer = 'GStreamer' in opencv_build_info
 
             if not has_gstreamer:
                 logger.warning("OpenCV 未编译 GStreamer 支持")
@@ -155,24 +191,64 @@ class PushStreamer:
                 self.use_gstreamer = False
                 return True  # 使用替代方案，返回成功
 
-            # 尝试使用 GStreamer
-            fourcc = cv2.VideoWriter_fourcc(*'H264')
-            self.out = cv2.VideoWriter(
-                self.gst_pipeline,
-                fourcc,
-                self.fps,
-                (self.video_width, self.video_height),
-                True
-            )
+            # 尝试多种 GStreamer 管道和编码器
+            logger.info("尝试初始化 GStreamer 推流...")
 
-            if not self.out.isOpened():
-                logger.warning("GStreamer 推流初始化失败，将使用替代方案")
-                self.use_gstreamer = False
-                self.out = None
-                return True  # 使用替代方案，返回成功
+            # 遍历所有备选管道
+            for idx, (pipeline, encoder_name) in enumerate(self.gst_pipelines, 1):
+                logger.debug(
+                    f"尝试编码器 {idx}/{len(self.gst_pipelines)}: {encoder_name}")
 
-            logger.success("GStreamer推流初始化成功")
-            return True
+                # 方法 1: 使用 CAP_GSTREAMER 和 fourcc=0
+                try:
+                    self.out = cv2.VideoWriter(
+                        pipeline,
+                        cv2.CAP_GSTREAMER,
+                        0,  # fourcc 设为 0，让 GStreamer 自动处理
+                        float(self.fps),
+                        (self.video_width, self.video_height),
+                        True
+                    )
+
+                    if self.out.isOpened():
+                        logger.success(
+                            f"GStreamer 推流初始化成功！使用编码器: {encoder_name}")
+                        self.gst_pipeline = pipeline  # 更新为工作的管道
+                        return True
+                except Exception as e:
+                    logger.debug(f"编码器 {encoder_name} (方法1) 失败: {str(e)}")
+
+                # 方法 2: 使用传统的 fourcc 方式
+                try:
+                    fourcc = cv2.VideoWriter_fourcc(*'H264')
+                    self.out = cv2.VideoWriter(
+                        pipeline,
+                        fourcc,
+                        float(self.fps),
+                        (self.video_width, self.video_height),
+                        True
+                    )
+
+                    if self.out.isOpened():
+                        logger.success(
+                            f"GStreamer 推流初始化成功！使用编码器: {encoder_name}")
+                        self.gst_pipeline = pipeline  # 更新为工作的管道
+                        return True
+                except Exception as e:
+                    logger.debug(f"编码器 {encoder_name} (方法2) 失败: {str(e)}")
+
+            # 所有编码器都失败
+            logger.warning("所有 GStreamer 编码器都初始化失败")
+            logger.info("提示：")
+            logger.info(
+                "  1. 安装 x264 编码器: sudo apt-get install gstreamer1.0-plugins-ugly")
+            logger.info(
+                "  2. 运行诊断工具: poetry run python test/test_gstreamer_debug.py")
+            logger.info("将使用替代方案：仅显示检测结果")
+            self.use_gstreamer = False
+            self.out = None
+            return True  # 使用替代方案，返回成功
+
         except Exception as e:
             logger.warning(f"视频写入器初始化异常: {str(e)}")
             logger.info("将使用替代方案：仅显示检测结果")
