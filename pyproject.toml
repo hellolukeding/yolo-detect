@@ -44,4 +44,4 @@ flake8 = "^7.3.0"
 [[tool.poetry.source]]
 name = "tuna"
 url = "https://pypi.tuna.tsinghua.edu.cn/simple"
-default = true
+priority = "primary"
