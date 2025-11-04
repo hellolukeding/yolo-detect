@@ -28,7 +28,7 @@ def main():
         fps=15,                     # 帧率
         bitrate=2000,               # 提高比特率到 2000kbps (1080p 需要更高带宽)
         camera_device=0,            # 摄像头设备 (Linux: '/dev/video4')
-        headless=True               # 无头模式
+        headless=False               # 无头模式
     )
 
     # 开始推流
