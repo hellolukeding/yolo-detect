@@ -33,12 +33,34 @@ fi
 
 # USB 摄像头列表
 echo -e "\n  USB 摄像头设备:"
+REALSENSE_FOUND=false
 for i in {0..4}; do
     if [ -e "/dev/video$i" ]; then
-        NAME=$(v4l2-ctl --device=/dev/video$i --info 2>/dev/null | grep "Card type" | cut -d: -f2 | xargs || echo "Unknown")
-        echo -e "    \033[0;32m✓\033[0m /dev/video$i - $NAME"
+        DEVICE_INFO=$(v4l2-ctl --device=/dev/video$i --info 2>/dev/null || true)
+        NAME=$(echo "$DEVICE_INFO" | grep "Card type" | cut -d: -f2 | xargs || echo "Unknown")
+
+        # 检查是否是 RealSense
+        if echo "$DEVICE_INFO" | grep -qi "real sense\|intel realsense\|depth camera\|f200 r200"; then
+            echo -e "    \033[0;32m✓\033[0m /dev/video$i - $NAME \033[0;35m(RealSense)\033[0m"
+            REALSENSE_FOUND=true
+        else
+            echo -e "    \033[0;32m✓\033[0m /dev/video$i - $NAME"
+        fi
     fi
 done
+
+# RealSense 库状态
+if lsusb 2>/dev/null | grep -qi "8086:0b.*\|real sense\|intel realsense"; then
+    echo -e "\n  RealSense 支持:"
+    if dpkg -l | grep -q "librealsense2"; then
+        echo -e "    \033[0;32m✓\033[0m librealsense2 已安装"
+        if [ "$REALSENSE_FOUND" = false ]; then
+            echo -e "    \033[0;33m⚠\033[0m 检测到 RealSense USB 但未找到视频设备"
+        fi
+    else
+        echo -e "    \033[0;33m⚠\033[0m librealsense2 未安装 (使用 V4L2 兼容模式)"
+    fi
+fi
 echo ""
 
 # 3. 推流配置

@@ -57,7 +57,79 @@ apt-get install -y \
     usbutils \
     systemd \
     libopencv-dev \
-    python3-opencv
+    python3-opencv \
+    software-properties-common \
+    ca-certificates \
+    gnupg
+
+# 添加 Intel RealSense 官方源
+echo ""
+echo -e "${GREEN}配置 RealSense 软件源...${NC}"
+if [ ! -f /etc/apt/sources.list.d/intel-realsense.list ]; then
+    echo "  添加 Intel RealSense 官方源..."
+
+    # 尝试添加 GPG 密钥（如果失败则跳过，V4L2 模式仍可用）
+    if wget -q --spider https://librealsense.intel.com/Debian/apt-repo/pool/main/l/librealsense2-0-0-keyring/librealsense2-0-0-keyring.gpg 2>/dev/null; then
+        wget -qO- https://librealsense.intel.com/Debian/apt-repo/pool/main/l/librealsense2-0-0-keyring/librealsense2-0-0-keyring.gpg | \
+            gpg --dearmor -o /usr/share/keyrings/librealsense2.gpg 2>/dev/null || echo "  GPG 导入失败，将使用不验证的源"
+    else
+        echo -e "  ${YELLOW}⚠ 无法获取 GPG 密钥，将配置不验证的源${NC}"
+    fi
+
+    # 添加源（根据 Ubuntu 版本选择）
+    if [ "$(lsb_release -cs)" = "jammy" ]; then
+        if [ -f /usr/share/keyrings/librealsense2.gpg ]; then
+            echo "deb [signed-by=/usr/share/keyrings/librealsense2.gpg] https://librealsense.intel.com/Debian/apt-repo jammy main" > \
+                /etc/apt/sources.list.d/intel-realsense.list
+        else
+            echo "deb [trusted=yes] https://librealsense.intel.com/Debian/apt-repo jammy main" > \
+                /etc/apt/sources.list.d/intel-realsense.list
+        fi
+    else
+        codename=$(lsb_release -cs)
+        if [ -f /usr/share/keyrings/librealsense2.gpg ]; then
+            echo "deb [signed-by=/usr/share/keyrings/librealsense2.gpg] https://librealsense.intel.com/Debian/apt-repo $codename main" > \
+                /etc/apt/sources.list.d/intel-realsense.list
+        else
+            echo "deb [trusted=yes] https://librealsense.intel.com/Debian/apt-repo $codename main" > \
+                /etc/apt/sources.list.d/intel-realsense.list
+        fi
+    fi
+
+    echo "  RealSense 源已添加"
+    apt-get update || echo "  源更新失败，继续安装"
+else
+    echo "  RealSense 源已存在"
+fi
+
+# 安装 RealSense 库
+echo ""
+echo -e "${GREEN}安装 RealSense 库...${NC}"
+if apt-cache show librealsense2-utils 2>/dev/null | grep -q librealsense2-utils; then
+    apt-get install -y librealsense2-utils librealsense2-dev python3-realsense2 2>/dev/null
+    if [ $? -eq 0 ]; then
+        echo "  ✓ RealSense 库安装完成"
+
+        # 设置 RealSense 设备权限
+        echo ""
+        echo -e "${GREEN}配置 RealSense 设备权限...${NC}"
+        if [ -f /etc/udev/rules.d/99-realsense-libusb.rules ]; then
+            echo "  RealSense udev 规则已存在"
+        else
+            echo "  添加 RealSense udev 规则"
+            cat > /etc/udev/rules.d/99-realsense-libusb.rules << 'EOF'
+# Intel RealSense devices (300-series)
+SUBSYSTEM=="usb", ATTR{idVendor}=="8086", MODE="0666"
+EOF
+            udevadm control --reload-rules 2>/dev/null || true
+            echo "  ✓ RealSense 权限配置完成"
+        fi
+    else
+        echo -e "  ${YELLOW}⚠ RealSense 库安装失败，将使用 V4L2 兼容模式${NC}"
+    fi
+else
+    echo -e "  ${YELLOW}⚠ RealSense 库不可用，将使用 V4L2 兼容模式${NC}"
+fi
 
 # 2. 复制项目文件
 echo ""

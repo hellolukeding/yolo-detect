@@ -5,10 +5,15 @@
 ## 系统要求
 
 - Ubuntu 20.04 或更高版本
-- Python 3.8+
+- Python 3.10+
 - 至少 1GB 可用内存
-- USB 摄像头 或 网络摄像头 (RTSP)
+- USB 摄像头 / RealSense 摄像头 / 网络摄像头 (RTSP)
 - 网络连接
+
+**支持的摄像头：**
+- USB 摄像头 (UVC 兼容)
+- Intel RealSense 系列 (通过 librealsense2 或 V4L2)
+- 网络摄像头 (RTSP 协议)
 
 ## 快速部署
 
@@ -183,6 +188,37 @@ tail -f /opt/yolo-detect/logs/streaming.log
 ```
 
 ### 2. 摄像头无法检测
+
+#### USB 摄像头
+
+```bash
+# 列出所有视频设备
+ls -la /dev/video*
+
+# 查看 USB 摄像头详情
+v4l2-ctl --device=/dev/video0 --info
+```
+
+#### RealSense 摄像头
+
+```bash
+# 检测 RealSense USB 设备
+lsusb | grep -i real
+
+# 安装 RealSense 支持
+sudo apt-get install librealsense2-utils librealsense2-dev
+
+# 测试 RealSense 设备
+realsense-viewer
+
+# 检查 V4L2 兼容模式
+v4l2-ctl --list-devices
+```
+
+**RealSense 注意事项：**
+- RealSense 摄像头可能以深度相机或 RGB 相机模式运行
+- 确保 udev 规则已正确配置（安装脚本会自动设置）
+- 如果 V4L2 模式不工作，可能需要使用 librealsense2 Python API
 
 ```bash
 # 列出所有视频设备

@@ -93,33 +93,54 @@ class FFmpegPushStreamer:
         """初始化摄像头"""
         try:
             # 支持设备ID或设备路径
+            camera_to_try = []
+
             if isinstance(self.camera_device, str):
-                logger.info(f"打开摄像头设备: {self.camera_device}")
-                self.cap = cv2.VideoCapture(self.camera_device)
+                # 如果是数字字符串，转换为整数并尝试多个设备
+                if self.camera_device.isdigit():
+                    cam_id = int(self.camera_device)
+                    logger.info(f"打开摄像头ID: {cam_id}")
+                    camera_to_try = [cam_id, cam_id + 1, cam_id + 2]  # 尝试多个设备
+                else:
+                    logger.info(f"打开摄像头设备: {self.camera_device}")
+                    camera_to_try = [self.camera_device]
             else:
                 logger.info(f"打开摄像头ID: {self.camera_device}")
-                self.cap = cv2.VideoCapture(self.camera_device)
+                camera_to_try = [self.camera_device]
 
-            if not self.cap.isOpened():
-                logger.error(f"无法打开摄像头")
-                return False
+            # 尝试每个设备
+            for cam in camera_to_try:
+                logger.info(f"  尝试设备: {cam}")
+                self.cap = cv2.VideoCapture(cam)
 
-            # 设置摄像头参数
-            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.video_width)
-            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.video_height)
-            self.cap.set(cv2.CAP_PROP_FPS, self.fps)
+                if not self.cap.isOpened():
+                    logger.warning(f"    设备 {cam} 无法打开")
+                    self.cap.release()
+                    continue
 
-            # 读取一帧测试
-            ret, frame = self.cap.read()
-            if not ret:
-                logger.error("无法从摄像头读取帧")
-                return False
+                # 读取一帧测试
+                ret, frame = self.cap.read()
+                if ret and frame is not None and frame.size > 0:
+                    actual_width = frame.shape[1]
+                    actual_height = frame.shape[0]
+                    logger.success(f"摄像头初始化成功: {cam} ({actual_width}x{actual_height})")
 
-            actual_width = frame.shape[1]
-            actual_height = frame.shape[0]
-            logger.success(f"摄像头初始化成功: {actual_width}x{actual_height}")
+                    # 设置摄像头参数
+                    self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.video_width)
+                    self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.video_height)
+                    self.cap.set(cv2.CAP_PROP_FPS, self.fps)
 
-            return True
+                    # 更新实际的摄像头设备
+                    self.camera_device = cam
+                    return True
+                else:
+                    logger.warning(f"    设备 {cam} 无法读取帧")
+                    self.cap.release()
+                    continue
+
+            logger.error("所有摄像头设备都无法打开")
+            return False
+
         except Exception as e:
             logger.error(f"摄像头初始化失败: {str(e)}")
             return False
