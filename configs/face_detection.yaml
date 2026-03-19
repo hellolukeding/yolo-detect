@@ -1,0 +1,12 @@
+# WiderFace 人脸检测数据集配置
+# 数据集路径
+path: /opt/2026/yolo-detect/datasets/widerface
+train: images  # 相对于 path
+val: images  # 相对于 path
+
+# 类别数量
+nc: 1
+
+# 类别名称
+names:
+  0: face

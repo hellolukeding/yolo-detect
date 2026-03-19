@@ -1,0 +1,13 @@
+# CityPersons 行人检测数据集配置
+# 数据集路径
+path: /opt/2026/yolo-detect/datasets/citypersons/yolo_dir
+train: images/train  # 相对于 path
+val: images/valid  # 相对于 path (使用验证集)
+
+# 类别数量
+nc: 2
+
+# 类别名称
+names:
+  0: pedestrian  # 行人
+  1: rider       # 骑行者

@@ -28,12 +28,28 @@ models/
 *.tflite
 *.torchscript
 *.mlmodel
+*.pt
+*.pth
 
 # Cached datasets and annotations
 datasets/
 !datasets/README.md  # 保留说明文件
 data/
 !data/README.md
+
+# Training runs
+runs/
+
+# -----------------------------
+# Output files
+# -----------------------------
+outputs/
+assets/*.mp4
+assets/*.avi
+assets/*.mov
+*.mp4
+*.avi
+*.mov
 
 # -----------------------------
 # IDE / OS Specific

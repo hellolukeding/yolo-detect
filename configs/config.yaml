@@ -1,0 +1,41 @@
+# 多任务视觉系统配置文件
+
+# 模型路径
+models:
+  person_detector: "models/person_detector.pt"      # 行人检测
+  face_detector: "models/face_detector.pt"          # 人脸检测
+  emotion_classifier: "models/emotion_model.pt"     # 表情识别
+  age_estimator: "models/age_model.pt"              # 年龄估计
+  pretrained: "models/pretrained/yolo11x.pt"        # 预训练模型
+
+# 数据集路径
+datasets:
+  citypersons: "/opt/2026/yolo-detect/datasets/citypersons/yolo_dir"
+  widerface: "/opt/2026/yolo-detect/datasets/widerface"
+  fer2013: "/opt/2026/yolo-detect/datasets/fer2013"
+  wikiface: "/opt/2026/yolo-detect/datasets/wiki"
+
+# 表情类别
+emotions:
+  - angry
+  - disgust
+  - fear
+  - happy
+  - neutral
+  - sad
+  - surprise
+
+# 年龄分组 (可选，用于分类)
+age_groups:
+  - [0, 12]    # 儿童
+  - [13, 19]   # 青少年
+  - [20, 35]   # 青年
+  - [36, 50]   # 中年
+  - [51, 100]  # 老年
+
+# 推理配置
+inference:
+  device: "cuda"           # RTX 5090
+  person_conf: 0.5         # 行人检测置信度阈值
+  face_conf: 0.5           # 人脸检测置信度阈值
+  imgsz: 640               # 输入图像大小
