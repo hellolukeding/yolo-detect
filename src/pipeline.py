@@ -189,8 +189,8 @@ def cv2_add_chinese_text(img, text, position, font_size=20, color=(0, 255, 0)):
 class MultiTaskPipeline:
     """多任务视觉推理 Pipeline"""
 
-    def __init__(self, config_path: str = "multitask/configs/config.yaml"):
-        # 加载配置
+    def __init__(self, config_path: str = "configs/config.yaml", models_config_path: str = "configs/models.yaml"):
+        # 加载主配置
         with open(config_path, 'r') as f:
             self.config = yaml.safe_load(f)
 
@@ -200,14 +200,52 @@ class MultiTaskPipeline:
         self.face_conf = self.config['inference']['face_conf']
         self.emotions = self.config['emotions']
 
+        # 加载模型启用配置
+        self.models_config = self._load_models_config(models_config_path)
+
         # 加载模型
         self._load_models()
 
+    def _load_models_config(self, models_config_path: str) -> dict:
+        """加载模型启用配置"""
+        with open(models_config_path, 'r') as f:
+            config = yaml.safe_load(f)
+
+        # 获取模型启用状态
+        models_enabled = {}
+
+        # 检查是否使用预设
+        active_preset = config.get('active_preset', '')
+        if active_preset and active_preset in config.get('presets', {}):
+            # 使用预设配置
+            preset = config['presets'][active_preset]
+            models_enabled = {
+                'person_detection': preset.get('person_detection', True),
+                'face_detection': preset.get('face_detection', False),
+                'emotion_classification': preset.get('emotion_classification', False),
+                'age_estimation': preset.get('age_estimation', False),
+            }
+            print(f"📋 使用预设配置: {active_preset}")
+        else:
+            # 使用单独的模型配置
+            for model_name, model_config in config.get('models', {}).items():
+                models_enabled[model_name] = model_config.get('enabled', True)
+            print(f"📋 使用自定义模型配置")
+
+        # 打印启用的模型
+        enabled_list = [k for k, v in models_enabled.items() if v]
+        disabled_list = [k for k, v in models_enabled.items() if not v]
+        print(f"  启用: {', '.join(enabled_list) if enabled_list else '无'}")
+        if disabled_list:
+            print(f"  禁用: {', '.join(disabled_list)} (节省性能)")
+
+        return models_enabled
+
     def _load_models(self):
-        """加载所有模型"""
+        """加载所有模型（根据配置决定是否加载）"""
         print("🔄 加载模型...")
 
-        # 行人检测模型
+        # 行人检测模型（必需）
         person_path = self.config['models']['person_detector']
         if Path(person_path).exists():
             self.person_detector = YOLO(person_path)
@@ -217,41 +255,53 @@ class MultiTaskPipeline:
             print(f"  ⚠️ 使用预训练模型: yolo11x.pt")
 
         # 人脸检测模型
-        face_path = self.config['models']['face_detector']
-        if Path(face_path).exists():
-            self.face_detector = YOLO(face_path)
-            print(f"  ✅ 人脸检测模型: {face_path}")
+        if self.models_config.get('face_detection', True):
+            face_path = self.config['models']['face_detector']
+            if Path(face_path).exists():
+                self.face_detector = YOLO(face_path)
+                print(f"  ✅ 人脸检测模型: {face_path}")
+            else:
+                self.face_detector = None
+                print(f"  ⚠️ 人脸检测模型未找到")
         else:
             self.face_detector = None
-            print(f"  ⚠️ 人脸检测模型未找到，将使用行人检测模型")
+            print(f"  ⏸️  人脸检测模型: 已禁用")
 
         # 表情识别模型
-        emotion_path = self.config['models']['emotion_classifier']
-        if Path(emotion_path).exists():
-            # 添加安全全局，允许加载 EmotionCNN 类
-            import __main__
-            # 将当前模块的类注册到 __main__，以便加载旧模型
-            __main__.EmotionCNN = EmotionCNN
-            self.emotion_model = torch.load(emotion_path, map_location=self.device, weights_only=False)
-            self.emotion_model.eval()
-            print(f"  ✅ 表情识别模型: {emotion_path}")
+        if self.models_config.get('emotion_classification', True):
+            emotion_path = self.config['models']['emotion_classifier']
+            if Path(emotion_path).exists():
+                # 添加安全全局，允许加载 EmotionCNN 类
+                import __main__
+                # 将当前模块的类注册到 __main__，以便加载旧模型
+                __main__.EmotionCNN = EmotionCNN
+                self.emotion_model = torch.load(emotion_path, map_location=self.device, weights_only=False)
+                self.emotion_model.eval()
+                print(f"  ✅ 表情识别模型: {emotion_path}")
+            else:
+                self.emotion_model = None
+                print(f"  ⚠️ 表情识别模型未找到")
         else:
             self.emotion_model = None
-            print(f"  ⚠️ 表情识别模型未找到")
+            print(f"  ⏸️  表情识别模型: 已禁用")
 
         # 年龄估计模型
-        age_path = self.config['models']['age_estimator']
-        if Path(age_path).exists():
-            # 添加安全全局，允许加载 AgeEstimator 类
-            import __main__
-            # 将当前模块的类注册到 __main__，以便加载旧模型
-            __main__.AgeEstimator = AgeEstimator
-            self.age_model = torch.load(age_path, map_location=self.device, weights_only=False)
-            self.age_model.eval()
-            print(f"  ✅ 年龄估计模型: {age_path}")
+        if self.models_config.get('age_estimation', False):
+            age_path = self.config['models']['age_estimator']
+            if Path(age_path).exists():
+                # 添加安全全局，允许加载 AgeEstimator 类
+                import __main__
+                # 将当前模块的类注册到 __main__，以便加载旧模型
+                __main__.AgeEstimator = AgeEstimator
+                self.age_model = torch.load(age_path, map_location=self.device, weights_only=False)
+                self.age_model.eval()
+                print(f"  ✅ 年龄估计模型: {age_path}")
+            else:
+                self.age_model = None
+                print(f"  ⚠️ 年龄估计模型未找到")
         else:
             self.age_model = None
-            print(f"  ⚠️ 年龄估计模型未找到")
+            print(f"  ⏸️  年龄估计模型: 已禁用 (节省 ~25% 性能)")
 
         print("✅ 模型加载完成!\n")
 
