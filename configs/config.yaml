@@ -35,7 +35,7 @@ age_groups:
 
 # 推理配置
 inference:
-  device: "cuda"           # RTX 5090
+  device: "cpu"            # cuda/mps/cpu
   person_conf: 0.5         # 行人检测置信度阈值
   face_conf: 0.5           # 人脸检测置信度阈值
   imgsz: 640               # 输入图像大小

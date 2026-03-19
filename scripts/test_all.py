@@ -19,12 +19,24 @@ def main():
     print("🧪 多任务视觉系统 - 模型测试")
     print("=" * 60)
 
-    # 检查 GPU
+    # 检查设备
+    device = None
     if torch.cuda.is_available():
+        device = "cuda"
         print(f"\n✅ GPU: {torch.cuda.get_device_name(0)}")
+    elif torch.backends.mps.is_available():
+        device = "mps"
+        print("\n✅ MPS (Apple Silicon)")
     else:
-        print("\n❌ GPU 不可用")
-        return
+        device = "cpu"
+        print("\n✅ CPU 模式")
+
+    if device == "cuda":
+        map_loc = "cuda"
+    elif device == "mps":
+        map_loc = "mps"
+    else:
+        map_loc = "cpu"
 
     results = {}
 
@@ -52,9 +64,13 @@ def main():
     # 3. 测试表情识别
     print("\n😀 表情识别模型...")
     try:
-        model = torch.load('models/emotion_model.pt', map_location='cuda', weights_only=False)
+        model = torch.load('models/emotion_model.pt', map_location=map_loc, weights_only=False)
         model.eval()
-        dummy = torch.randn(1, 1, 48, 48).cuda()
+        dummy = torch.randn(1, 1, 48, 48)
+        if device:
+            dummy = dummy.to(device)
+        if device:
+            model = model.to(device)
         with torch.no_grad():
             out = model(dummy)
         results['表情识别'] = True
@@ -66,9 +82,13 @@ def main():
     # 4. 测试年龄估计
     print("\n🎂 年龄估计模型...")
     try:
-        model = torch.load('models/age_model.pt', map_location='cuda', weights_only=False)
+        model = torch.load('models/age_model.pt', map_location=map_loc, weights_only=False)
         model.eval()
-        dummy = torch.randn(1, 3, 224, 224).cuda()
+        dummy = torch.randn(1, 3, 224, 224)
+        if device:
+            dummy = dummy.to(device)
+        if device:
+            model = model.to(device)
         with torch.no_grad():
             out = model(dummy)
         results['年龄估计'] = True

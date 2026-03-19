@@ -12,8 +12,20 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 from torchvision import models
+from PIL import Image, ImageDraw, ImageFont
 
 from ultralytics import YOLO
+
+# 表情英文 -> 中文映射
+EMOTION_CN = {
+    'angry': '生气',
+    'disgust': '厌恶',
+    'fear': '恐惧',
+    'happy': '开心',
+    'neutral': '平静',
+    'sad': '伤心',
+    'surprise': '惊讶',
+}
 
 
 # ============== 模型定义 ==============
@@ -114,6 +126,64 @@ class Face:
     emotion_conf: Optional[float] = None
     age: Optional[int] = None
     age_conf: Optional[float] = None
+
+
+# ============== 工具函数 ==============
+
+# 项目根目录
+PROJECT_ROOT = Path(__file__).parent.parent
+FONT_PATH = PROJECT_ROOT / "assets" / "fonts" / "AlibabaPuHuiTi-Regular.ttf"
+
+
+def cv2_add_chinese_text(img, text, position, font_size=20, color=(0, 255, 0)):
+    """
+    在 OpenCV 图像上添加中文文本
+
+    Args:
+        img: OpenCV 图像 (BGR 格式)
+        text: 要添加的文本
+        position: 位置 (x, y)
+        font_size: 字体大小
+        color: 颜色 (B, G, R)
+
+    Returns:
+        添加了文本的图像
+    """
+    # 转换为 PIL 图像
+    img_pil = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+    draw = ImageDraw.Draw(img_pil)
+
+    # 加载本地中文字体
+    try:
+        if FONT_PATH.exists():
+            font = ImageFont.truetype(str(FONT_PATH), font_size)
+        else:
+            # 降级到系统字体
+            font_paths = [
+                '/System/Library/Fonts/PingFang.ttc',
+                '/System/Library/Fonts/STHeiti Light.ttc',
+                '/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf',
+                'C:/Windows/Fonts/msyh.ttc',
+                'C:/Windows/Fonts/simhei.ttf',
+            ]
+            font = None
+            for font_path in font_paths:
+                try:
+                    font = ImageFont.truetype(font_path, font_size)
+                    break
+                except:
+                    continue
+            if font is None:
+                font = ImageFont.load_default()
+    except:
+        font = ImageFont.load_default()
+
+    # 绘制文本
+    draw.text(position, text, font=font, fill=color[::-1])  # PIL 使用 RGB，OpenCV 使用 BGR
+
+    # 转换回 OpenCV 格式
+    img_cv2 = cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
+    return img_cv2
 
 
 class MultiTaskPipeline:
@@ -322,8 +392,9 @@ class MultiTaskPipeline:
 
             # 绘制行人框 (蓝色)
             cv2.rectangle(result, (x1, y1), (x2, y2), (255, 0, 0), 2)
-            cv2.putText(result, f"Person {person.confidence:.2f}",
-                       (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
+            # 使用中文绘制
+            result = cv2_add_chinese_text(result, f"行人 {person.confidence:.2f}",
+                                         (x1, y1 - 25), font_size=20, color=(255, 0, 0))
 
             # 如果有人脸，绘制人脸信息
             if person.face:
@@ -336,14 +407,16 @@ class MultiTaskPipeline:
                 # 构建信息文本
                 info_parts = []
                 if face.emotion:
-                    info_parts.append(f"{face.emotion}")
+                    emotion_cn = EMOTION_CN.get(face.emotion, face.emotion)
+                    info_parts.append(f"{emotion_cn}")
                 if face.age and face.age > 0:
-                    info_parts.append(f"Age:{face.age}")
+                    info_parts.append(f"{face.age}岁")
 
                 if info_parts:
                     info_text = " | ".join(info_parts)
-                    cv2.putText(result, info_text,
-                               (fx1, fy1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                    # 使用中文绘制
+                    result = cv2_add_chinese_text(result, info_text,
+                                                 (fx1, fy1 - 25), font_size=18, color=(0, 255, 0))
 
         return result
 

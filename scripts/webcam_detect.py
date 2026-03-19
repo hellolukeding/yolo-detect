@@ -228,7 +228,7 @@ if __name__ == "__main__":
     webcam_detect(
         model_path="runs/train/person_detection/weights/best.pt",
         conf=0.5,  # 可以调整置信度阈值
-        device="mps"  # macOS使用mps，Windows/Linux使用cuda或cpu
+        device="cpu"  # macOS使用mps，Windows/Linux使用cuda或cpu
     )
 
     # 方式2: 带目标跟踪的检测
