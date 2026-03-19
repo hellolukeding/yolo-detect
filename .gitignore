@@ -22,14 +22,20 @@ logs/
 # YOLO / Ultralytics
 # -----------------------------
 
-models/
+# 预训练模型 (太大不上传)
+models/pretrained/*.pt
+
+# 允许训练好的模型
+!models/person_detector.pt
+!models/face_detector.pt
+!models/emotion_model.pt
+!models/age_model.pt
+
 *.onnx
 *.engine
 *.tflite
 *.torchscript
 *.mlmodel
-*.pt
-*.pth
 
 # Cached datasets and annotations
 datasets/
@@ -71,3 +77,5 @@ __results__/
 output/
 dist/
 build/
+# 大文件 (>100MB)
+models/face_detector.pt
