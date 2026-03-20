@@ -4,10 +4,10 @@ YOLO 推流服务启动脚本
 自动选择摄像头并启动推流服务
 """
 
-import sys
-import os
-import time
 import logging
+import os
+import sys
+import time
 from pathlib import Path
 
 # 添加项目路径
@@ -63,9 +63,84 @@ def load_config():
     return config
 
 
+def resolve_camera_device(camera_type, camera_device):
+    """解析摄像头配置，保留可直接传给 OpenCV 的设备值。"""
+    normalized_type = (camera_type or "usb").strip().lower()
+    normalized_device = str(camera_device or "0").strip()
+
+    if normalized_type == "rtsp":
+        return normalized_device
+
+    if normalized_device.startswith("/dev/video"):
+        return normalized_device
+
+    if normalized_device.isdigit():
+        return int(normalized_device)
+
+    return normalized_device
+
+
+def resolve_service_role(service_role):
+    """解析部署角色。"""
+    normalized_role = (service_role or "integrated").strip().lower()
+    valid_roles = {"integrated", "edge", "server"}
+    if normalized_role not in valid_roles:
+        raise ValueError(f"不支持的 SERVICE_ROLE: {service_role}")
+    return normalized_role
+
+
+def build_runtime_settings(config):
+    """构建运行时配置，统一角色差异。"""
+    service_role = resolve_service_role(config.get("SERVICE_ROLE", "integrated"))
+    camera_type = config.get("CAMERA_TYPE", "usb")
+    camera_device = config.get("CAMERA_DEVICE", "0")
+
+    return {
+        "service_role": service_role,
+        "camera_type": camera_type,
+        "camera_device": resolve_camera_device(camera_type, camera_device),
+        "push_host": config.get("PUSH_HOST", "127.0.0.1"),
+        "push_port": int(config.get("PUSH_PORT", 5004)),
+        "listen_host": config.get("LISTEN_HOST", "0.0.0.0"),
+        "listen_port": int(config.get("LISTEN_PORT", config.get("PUSH_PORT", 5004))),
+        "model_path": config.get("MODEL_PATH", "models/person_detector.pt"),
+        "video_width": int(config.get("VIDEO_WIDTH", 640)),
+        "video_height": int(config.get("VIDEO_HEIGHT", 480)),
+        "fps": int(config.get("FPS", 15)),
+        "bitrate": int(config.get("BITRATE", 500)),
+        "confidence": float(config.get("CONFIDENCE", 0.5)),
+        "iou": float(config.get("IOU", 0.45)),
+        "device": config.get("DEVICE", "cpu"),
+    }
+
+
 def start_streaming(config):
-    """启动推流服务"""
-    # 导入推流模块
+    """按角色启动服务。"""
+    settings = build_runtime_settings(config)
+    logger.info(f"服务角色: {settings['service_role']}")
+
+    if settings["service_role"] == "server":
+        try:
+            from service.remote_stream_analyzer import RemoteStreamAnalyzer
+            logger.info("使用远端收流分析模式")
+        except ImportError as e:
+            logger.error(f"无法导入远端分析模块: {e}")
+            sys.exit(1)
+
+        analyzer = RemoteStreamAnalyzer(
+            model_path=settings["model_path"],
+            listen_host=settings["listen_host"],
+            listen_port=settings["listen_port"],
+            video_width=settings["video_width"],
+            video_height=settings["video_height"],
+            confidence=settings["confidence"],
+            device=settings["device"],
+        )
+        logger.info("分析器创建成功")
+        logger.info(f"监听地址: {settings['listen_host']}:{settings['listen_port']}")
+        analyzer.start()
+        return
+
     try:
         from service.push_streamer_ffmpeg import FFmpegPushStreamer
         logger.info("使用 FFmpeg 推流模式")
@@ -73,45 +148,35 @@ def start_streaming(config):
         logger.error(f"无法导入推流模块: {e}")
         sys.exit(1)
 
-    # 获取摄像头配置
-    camera_device = config.get('CAMERA_DEVICE', '0')
-    camera_type = config.get('CAMERA_TYPE', 'usb')
-
-    if camera_type == 'rtsp':
-        logger.info(f"使用网络摄像头: {camera_device}")
+    if settings["camera_type"] == 'rtsp':
+        logger.info(f"使用网络摄像头: {settings['camera_device']}")
     else:
-        logger.info(f"使用 USB 摄像头: {camera_device}")
+        logger.info(f"使用 USB 摄像头: {settings['camera_device']}")
+    logger.info(f"摄像头启动参数: {settings['camera_device']!r}")
 
-    # 确定摄像头索引
-    if camera_type == 'usb' and camera_device.startswith('/dev/video'):
-        camera_index = int(camera_device.replace('/dev/video', ''))
-    else:
-        camera_index = 0
-
-    # 创建推流器
     try:
         streamer = FFmpegPushStreamer(
-            model_path=config.get('MODEL_PATH', 'models/person_detector.pt'),
-            host=config.get('PUSH_HOST', '192.168.1.100'),
-            port=int(config.get('PUSH_PORT', 5004)),
-            video_width=int(config.get('VIDEO_WIDTH', 640)),
-            video_height=int(config.get('VIDEO_HEIGHT', 480)),
-            fps=int(config.get('FPS', 15)),
-            bitrate=int(config.get('BITRATE', 500)),
-            camera_device=camera_index,
-            headless=True
+            model_path=settings["model_path"],
+            host=settings["push_host"],
+            port=settings["push_port"],
+            video_width=settings["video_width"],
+            video_height=settings["video_height"],
+            fps=settings["fps"],
+            bitrate=settings["bitrate"],
+            camera_device=settings["camera_device"],
+            headless=True,
+            enable_detection=settings["service_role"] != "edge",
+            confidence=settings["confidence"],
+            device=settings["device"],
         )
         logger.info("推流器创建成功")
     except Exception as e:
         logger.error(f"创建推流器失败: {e}")
         sys.exit(1)
 
-    # 启动推流
     try:
         logger.info("开始推流...")
-        logger.info(f"推流地址: {config.get('PUSH_HOST')}:{config.get('PUSH_PORT')}")
-
-        # FFmpegPushStreamer.start_streaming() 不需要参数
+        logger.info(f"推流地址: {settings['push_host']}:{settings['push_port']}")
         streamer.start_streaming()
     except KeyboardInterrupt:
         logger.info("收到停止信号，正在关闭...")

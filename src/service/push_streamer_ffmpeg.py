@@ -6,7 +6,6 @@ from typing import Optional
 
 import cv2
 import numpy as np
-from ultralytics import YOLO
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from src.utils.logger import setup_logger
@@ -35,6 +34,9 @@ class FFmpegPushStreamer:
         bitrate: int = 400,  # kbps
         camera_device: int = 0,  # 摄像头设备ID
         headless: bool = True,
+        enable_detection: bool = True,
+        confidence: float = 0.5,
+        device: str = "cpu",
     ):
         """
         初始化 FFmpeg 推流器
@@ -59,8 +61,11 @@ class FFmpegPushStreamer:
         self.bitrate = bitrate
         self.camera_device = camera_device
         self.headless = headless
+        self.enable_detection = enable_detection
+        self.confidence = confidence
+        self.device = device
 
-        self.model: Optional[YOLO] = None
+        self.model = None
         self.cap: Optional[cv2.VideoCapture] = None
         self.ffmpeg_process: Optional[subprocess.Popen] = None
         self.ffmpeg_monitor_thread: Optional[threading.Thread] = None
@@ -76,6 +81,8 @@ class FFmpegPushStreamer:
             return False
 
         try:
+            from ultralytics import YOLO
+
             logger.info(f"正在加载模型: {self.model_path}")
             self.model = YOLO(self.model_path)
 
@@ -100,18 +107,42 @@ class FFmpegPushStreamer:
                 if self.camera_device.isdigit():
                     cam_id = int(self.camera_device)
                     logger.info(f"打开摄像头ID: {cam_id}")
-                    camera_to_try = [cam_id, cam_id + 1, cam_id + 2]  # 尝试多个设备
+                    camera_to_try = [
+                        f"/dev/video{cam_id}", cam_id,
+                        f"/dev/video{cam_id + 1}", cam_id + 1,
+                        f"/dev/video{cam_id + 2}", cam_id + 2,
+                    ]
                 else:
                     logger.info(f"打开摄像头设备: {self.camera_device}")
                     camera_to_try = [self.camera_device]
             else:
                 logger.info(f"打开摄像头ID: {self.camera_device}")
-                camera_to_try = [self.camera_device]
+                if isinstance(self.camera_device, int) and self.camera_device >= 0:
+                    cam_id = self.camera_device
+                    camera_to_try = [
+                        f"/dev/video{cam_id}", cam_id,
+                        f"/dev/video{cam_id + 1}", cam_id + 1,
+                        f"/dev/video{cam_id + 2}", cam_id + 2,
+                    ]
+                else:
+                    camera_to_try = [self.camera_device]
+
+            # 去重，保持原有优先级
+            deduped_camera_to_try = []
+            seen = set()
+            for cam in camera_to_try:
+                cam_key = str(cam)
+                if cam_key not in seen:
+                    deduped_camera_to_try.append(cam)
+                    seen.add(cam_key)
 
             # 尝试每个设备
-            for cam in camera_to_try:
+            for cam in deduped_camera_to_try:
                 logger.info(f"  尝试设备: {cam}")
-                self.cap = cv2.VideoCapture(cam)
+                if isinstance(cam, str) and cam.startswith("/dev/video"):
+                    self.cap = cv2.VideoCapture(cam, cv2.CAP_V4L2)
+                else:
+                    self.cap = cv2.VideoCapture(cam)
 
                 if not self.cap.isOpened():
                     logger.warning(f"    设备 {cam} 无法打开")
@@ -294,9 +325,12 @@ class FFmpegPushStreamer:
         logger.info("🚀 启动 YOLO FFmpeg 推流系统")
         logger.info("=" * 50)
 
-        # 1. 加载模型
-        if not self._load_model():
-            return
+        if self.enable_detection:
+            # 1. 加载模型
+            if not self._load_model():
+                return
+        else:
+            logger.info("边缘推流模式：跳过模型加载，仅采集和推流")
 
         # 2. 初始化摄像头
         if not self._init_camera():
@@ -321,31 +355,31 @@ class FFmpegPushStreamer:
                     logger.warning("无法读取摄像头帧")
                     break
 
-                # YOLO 检测（使用 CPU）
-                results = self.model.predict(
-                    frame,
-                    conf=0.5,
-                    device='cpu',  # 强制使用 CPU
-                    verbose=False
-                )
+                if self.enable_detection:
+                    results = self.model.predict(
+                        frame,
+                        conf=self.confidence,
+                        device=self.device,
+                        verbose=False
+                    )
 
-                # 绘制检测结果
-                if results and len(results) > 0:
-                    boxes = results[0].boxes
-                    frame = self._draw_detections(frame, boxes)
+                    # 绘制检测结果
+                    if results and len(results) > 0:
+                        boxes = results[0].boxes
+                        frame = self._draw_detections(frame, boxes)
 
-                    # 显示检测统计
-                    if len(boxes) > 0:
-                        detected_classes = {}
-                        for box in boxes:
-                            class_name = self.model.names[int(box.cls[0])]
-                            detected_classes[class_name] = detected_classes.get(
-                                class_name, 0) + 1
+                        # 显示检测统计
+                        if len(boxes) > 0:
+                            detected_classes = {}
+                            for box in boxes:
+                                class_name = self.model.names[int(box.cls[0])]
+                                detected_classes[class_name] = detected_classes.get(
+                                    class_name, 0) + 1
 
-                        if frame_count % 30 == 0:  # 每30帧显示一次
-                            detection_str = ", ".join(
-                                [f"{k}:{v}" for k, v in detected_classes.items()])
-                            logger.info(f"检测到: {detection_str}")
+                            if frame_count % 30 == 0:  # 每30帧显示一次
+                                detection_str = ", ".join(
+                                    [f"{k}:{v}" for k, v in detected_classes.items()])
+                                logger.info(f"检测到: {detection_str}")
 
                 # 确保帧尺寸正确
                 if frame.shape[1] != self.video_width or frame.shape[0] != self.video_height:

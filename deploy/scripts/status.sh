@@ -25,8 +25,13 @@ echo ""
 echo -e "\033[1;33m[2] 摄像头状态\033[0m"
 if [ -f "$INSTALL_DIR/deploy/config/service.conf" ]; then
     source "$INSTALL_DIR/deploy/config/service.conf"
+    echo -e "  角色: \033[0;36m${SERVICE_ROLE:-integrated}\033[0m"
     echo -e "  类型: \033[0;36m$CAMERA_TYPE\033[0m"
-    echo -e "  设备: \033[0;36m$CAMERA_DEVICE\033[0m"
+    if [ "${SERVICE_ROLE:-integrated}" = "server" ]; then
+        echo -e "  监听: \033[0;36m${LISTEN_HOST:-0.0.0.0}:${LISTEN_PORT:-5004}\033[0m"
+    else
+        echo -e "  设备: \033[0;36m$CAMERA_DEVICE\033[0m"
+    fi
 else
     echo -e "  \033[0;31m配置文件不存在\033[0m"
 fi
@@ -34,20 +39,24 @@ fi
 # USB 摄像头列表
 echo -e "\n  USB 摄像头设备:"
 REALSENSE_FOUND=false
-for i in {0..4}; do
-    if [ -e "/dev/video$i" ]; then
-        DEVICE_INFO=$(v4l2-ctl --device=/dev/video$i --info 2>/dev/null || true)
-        NAME=$(echo "$DEVICE_INFO" | grep "Card type" | cut -d: -f2 | xargs || echo "Unknown")
+if [ "${SERVICE_ROLE:-integrated}" = "server" ]; then
+    echo -e "    \033[0;33m-\033[0m server 角色无需本地摄像头"
+else
+    for i in {0..4}; do
+        if [ -e "/dev/video$i" ]; then
+            DEVICE_INFO=$(v4l2-ctl --device=/dev/video$i --info 2>/dev/null || true)
+            NAME=$(echo "$DEVICE_INFO" | grep "Card type" | cut -d: -f2 | xargs || echo "Unknown")
 
-        # 检查是否是 RealSense
-        if echo "$DEVICE_INFO" | grep -qi "real sense\|intel realsense\|depth camera\|f200 r200"; then
-            echo -e "    \033[0;32m✓\033[0m /dev/video$i - $NAME \033[0;35m(RealSense)\033[0m"
-            REALSENSE_FOUND=true
-        else
-            echo -e "    \033[0;32m✓\033[0m /dev/video$i - $NAME"
+            # 检查是否是 RealSense
+            if echo "$DEVICE_INFO" | grep -qi "real sense\|intel realsense\|depth camera\|f200 r200"; then
+                echo -e "    \033[0;32m✓\033[0m /dev/video$i - $NAME \033[0;35m(RealSense)\033[0m"
+                REALSENSE_FOUND=true
+            else
+                echo -e "    \033[0;32m✓\033[0m /dev/video$i - $NAME"
+            fi
         fi
-    fi
-done
+    done
+fi
 
 # RealSense 库状态
 if lsusb 2>/dev/null | grep -qi "8086:0b.*\|real sense\|intel realsense"; then

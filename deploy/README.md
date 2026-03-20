@@ -2,6 +2,11 @@
 
 适用于配置较低的 Ubuntu 服务器的自动部署方案。
 
+支持三种部署角色：
+- `integrated`: 单机采集 + 分析 + 推流
+- `edge`: 边缘端，仅采集和推流
+- `server`: 服务器端，仅收流和分析
+
 ## 系统要求
 
 - Ubuntu 20.04 或更高版本
@@ -60,6 +65,13 @@ sudo nano /opt/yolo-detect/deploy/config/service.conf
 PUSH_HOST="115.120.237.79"   # 推流服务器地址
 PUSH_PORT=5004               # 推流端口
 
+# 部署角色
+SERVICE_ROLE="edge"          # integrated / edge / server
+
+# 服务器端监听地址（仅 SERVICE_ROLE=server 使用）
+LISTEN_HOST="0.0.0.0"
+LISTEN_PORT=5004
+
 # 模型预设 (根据服务器性能选择)
 MODEL_PRESET="standard"      # full/standard/performance/minimal
 
@@ -99,6 +111,143 @@ sudo systemctl enable yolo-streaming
 sudo systemctl status yolo-streaming
 ```
 
+## 双机拆分部署
+
+推荐在以下场景使用：
+- 机器狗本体算力有限，只负责采集和推流
+- 5090 服务器负责收流、解码和模型分析
+- 视觉结果暂时不参与机器狗实时运动控制
+
+### 架构说明
+
+```text
+机器狗(edge) -> RTP H264 -> 5090服务器(server)
+```
+
+- `edge` 角色：只打开摄像头、编码并推流，不做本地 YOLO 推理
+- `server` 角色：监听视频流，解码后在本机执行 YOLO 推理
+
+### 机器狗部署步骤
+
+```bash
+cd /opt/yolo-detect
+sudo bash deploy/scripts/install.sh
+sudo nano /opt/yolo-detect/deploy/config/service.conf
+```
+
+将配置修改为：
+
+```bash
+SERVICE_ROLE="edge"
+CAMERA_TYPE=usb
+CAMERA_DEVICE="/dev/video4"
+
+PUSH_HOST="你的5090服务器IP"
+PUSH_PORT=5004
+
+VIDEO_WIDTH=640
+VIDEO_HEIGHT=480
+FPS=15
+BITRATE=500
+```
+
+如果使用 RealSense，建议重新检测一次摄像头：
+
+```bash
+sudo bash /opt/yolo-detect/deploy/scripts/detect_camera.sh
+grep CAMERA_DEVICE /opt/yolo-detect/deploy/config/service.conf
+```
+
+正常情况下应看到：
+
+```bash
+CAMERA_DEVICE="/dev/video4"
+```
+
+启动并设置开机自启：
+
+```bash
+sudo systemctl enable yolo-streaming
+sudo systemctl restart yolo-streaming
+sudo journalctl -u yolo-streaming -f
+```
+
+### 5090 服务器部署步骤
+
+```bash
+cd /opt/yolo-detect
+sudo bash deploy/scripts/install.sh
+sudo nano /opt/yolo-detect/deploy/config/service.conf
+```
+
+将配置修改为：
+
+```bash
+SERVICE_ROLE="server"
+
+LISTEN_HOST="0.0.0.0"
+LISTEN_PORT=5004
+
+MODEL_PATH="models/person_detector.pt"
+CONFIDENCE=0.5
+IOU=0.45
+DEVICE="cuda"
+
+VIDEO_WIDTH=640
+VIDEO_HEIGHT=480
+```
+
+说明：
+- `server` 角色安装时会自动跳过摄像头检测
+- 服务器端不需要配置 `CAMERA_DEVICE`
+- 如果服务器没有 NVIDIA 环境，请把 `DEVICE` 改为 `cpu`
+
+启动并设置开机自启：
+
+```bash
+sudo systemctl enable yolo-streaming
+sudo systemctl restart yolo-streaming
+sudo journalctl -u yolo-streaming -f
+```
+
+### 联调步骤
+
+先启动 5090 服务器，再启动机器狗。
+
+检查机器狗端日志，应该看到：
+
+```text
+服务角色: edge
+边缘推流模式：跳过模型加载，仅采集和推流
+开始推流到 <server-ip>:5004
+```
+
+检查 5090 服务器日志，应该看到：
+
+```text
+服务角色: server
+使用远端收流分析模式
+开始监听 RTP 视频流: 0.0.0.0:5004
+模型加载成功! (使用 cuda)
+```
+
+### 双机模式常用命令
+
+机器狗端：
+
+```bash
+sudo bash /opt/yolo-detect/deploy/scripts/detect_camera.sh
+sudo systemctl restart yolo-streaming
+sudo journalctl -u yolo-streaming -f
+```
+
+服务器端：
+
+```bash
+sudo systemctl restart yolo-streaming
+sudo journalctl -u yolo-streaming -f
+```
+
 ## 服务管理
 
 ### 常用命令
@@ -134,7 +283,7 @@ bash /opt/yolo-detect/deploy/scripts/restart.sh
 RTSP_URL="rtsp://admin:password@192.168.1.100:554/stream1"
 
 # USB 摄像头设备（自动检测）
-# USB_CAMERA="/dev/video0"
+CAMERA_DEVICE="/dev/video4"
 ```
 
 ### 推流配置
@@ -143,6 +292,27 @@ RTSP_URL="rtsp://admin:password@192.168.1.100:554/stream1"
 # 推流目标服务器
 PUSH_HOST="115.120.237.79"
 PUSH_PORT=5004
+```
+
+### 收流配置
+
+```bash
+# 仅服务器端分析模式使用
+LISTEN_HOST="0.0.0.0"
+LISTEN_PORT=5004
+```
+
+### 角色配置
+
+```bash
+# 单机模式：采集 + 分析 + 推流
+SERVICE_ROLE="integrated"
+
+# 机器狗边缘端：只推流
+SERVICE_ROLE="edge"
+
+# 5090 服务器：只收流分析
+SERVICE_ROLE="server"
 ```
 
 ### 检测配置

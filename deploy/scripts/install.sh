@@ -233,7 +233,11 @@ systemctl daemon-reload
 # 6. 检测摄像头
 echo ""
 echo -e "${GREEN}[6/6] 检测摄像头设备...${NC}"
-bash "$INSTALL_DIR/deploy/scripts/detect_camera.sh"
+if [ "${SERVICE_ROLE:-integrated}" = "server" ]; then
+    echo "server 角色跳过摄像头检测"
+else
+    bash "$INSTALL_DIR/deploy/scripts/detect_camera.sh"
+fi
 
 # 完成
 echo ""
